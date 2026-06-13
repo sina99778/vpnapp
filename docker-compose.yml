@@ -1,0 +1,96 @@
+name: securevpn
+
+# Full middleware stack. The Rebecca panel is NOT part of this compose — it lives
+# on a separate private network and the api reaches it via PANEL_BASE_URL.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-vpn}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vpn}
+      POSTGRES_DB: ${POSTGRES_DB:-vpn}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vpn} -d ${POSTGRES_DB:-vpn}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    # No public port mapping — only api/migrator reach it on the internal network.
+
+  redis:
+    image: redis:7-alpine
+    # Rate-limit counters are ephemeral; disable persistence for speed.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  # Short-lived init container: applies schema + migrations, then exits 0.
+  migrator:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vpn}:${POSTGRES_PASSWORD:-vpn}@postgres:5432/${POSTGRES_DB:-vpn}
+    volumes:
+      - ./db:/db:ro
+    entrypoint: ["sh", "/db/migrate.sh"]
+    restart: "no"
+
+  api:
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully  # DB schema ready before api boots
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-vpn}:${POSTGRES_PASSWORD:-vpn}@postgres:5432/${POSTGRES_DB:-vpn}
+      REDIS_URL: redis://redis:6379
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
+    # Secrets + the rest of the config (JWT, panel creds, attestation, Apple PEM
+    # path). environment: above overrides any DB/Redis URL set in here.
+    env_file:
+      - ./backend/.env
+    volumes:
+      # Mount the attestation secret files referenced by GOOGLE_APPLICATION_CREDENTIALS
+      # and APPLE_APPATTEST_ROOT_CA_PEM (e.g. /secrets/Apple_App_Attestation_Root_CA.pem).
+      - ./secrets:/secrets:ro
+    ports:
+      - "3000:3000"   # in prod, bind only to the reverse proxy / internal net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/api/v1/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # Admin dashboard (Next.js). NEXT_PUBLIC_API_URL is the URL the admin's
+  # BROWSER uses to reach the api — it is baked in at image BUILD time, so
+  # changing it requires `docker compose up -d --build web`.
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3001:3000"  # dashboard on http://localhost:3001
+    restart: unless-stopped
+
+volumes:
+  pgdata:

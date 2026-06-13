@@ -1,0 +1,8 @@
+# Shell/SQL/Docker files must stay LF — they execute inside Linux containers.
+* text=auto
+*.sh text eol=lf
+*.sql text eol=lf
+*.pem text eol=lf
+Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

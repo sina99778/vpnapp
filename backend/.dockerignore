@@ -1,0 +1,13 @@
+node_modules
+dist
+npm-debug.log*
+.env
+.env.*
+*.pem
+boottest-root.pem
+.git
+.gitignore
+Dockerfile
+.dockerignore
+*.md
+build/symbols
