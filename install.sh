@@ -89,6 +89,24 @@ done
 # ── prerequisites ────────────────────────────────────────────────────────────
 say "Checking prerequisites"
 
+# Auto-create swap if total memory is low (prevents OOM during Docker builds)
+TOTAL_MEM_KB=$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+TOTAL_SWAP_KB=$(awk '/SwapTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
+TOTAL_KB=$((TOTAL_MEM_KB + TOTAL_SWAP_KB))
+if [ "$TOTAL_KB" -lt 2097152 ]; then  # less than 2GB total
+  if [ ! -f /swapfile ]; then
+    say "Low memory detected ($(( TOTAL_MEM_KB / 1024 ))MB RAM). Creating 2GB swap..."
+    fallocate -l 2G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+    chmod 600 /swapfile
+    mkswap /swapfile >/dev/null
+    swapon /swapfile
+    ok "2GB swap activated"
+  else
+    swapon /swapfile 2>/dev/null || true
+    ok "Swap already exists"
+  fi
+fi
+
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
   if command -v sudo >/dev/null 2>&1; then

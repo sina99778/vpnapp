@@ -13,7 +13,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json nest-cli.json ./
 COPY src ./src
-ENV NODE_OPTIONS="--max-old-space-size=512"
+ENV NODE_OPTIONS="--max-old-space-size=1024"
 RUN npm run build            # → /app/dist
 
 # ---- proddeps: production-only node_modules (native modules built for THIS base)
