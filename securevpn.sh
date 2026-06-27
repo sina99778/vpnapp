@@ -16,9 +16,10 @@ show_menu() {
     echo "1) 🩺 Doctor (عیب‌یاب سیستم)"
     echo "2) 🚀 Deploy / Start Services (اجرای سرویس‌ها)"
     echo "3) 🛑 Stop Services (توقف سرویس‌ها)"
-    echo "4) 🔄 Update System (بروزرسانی سیستم)"
-    echo "5) 📜 View API Logs (مشاهده لاگ‌های بک‌اند)"
-    echo "6) 📜 View Web Dashboard Logs (مشاهده لاگ‌های داشبورد)"
+    echo "4) 🔄 Update System (بروزرسانی کل سیستم)"
+    echo "5) 🌐 Rebuild Web Panel (بیلد مجدد پنل وب)"
+    echo "6) 📜 View API Logs (مشاهده لاگ‌های بک‌اند)"
+    echo "7) 📜 View Web Dashboard Logs (مشاهده لاگ‌های داشبورد)"
     echo "0) ❌ Exit (خروج)"
     echo -e "${BLUE}=======================================${NC}"
     echo -n "Choose an option: "
@@ -73,10 +74,13 @@ while true; do
             run_doctor
             ;;
         2)
-            echo -e "${YELLOW}Starting services...${NC}"
+            echo -e "${YELLOW}Starting services (API + Web Panel)...${NC}"
             docker compose up -d
-            echo -e "${GREEN}Done!${NC}"
-            sleep 2
+            echo -e "${GREEN}Done! (انجام شد)${NC}"
+            echo -e "\n🌐 ${BLUE}Web Dashboard:${NC} http://localhost:3001"
+            echo -e "🔗 ${BLUE}API Endpoint:${NC}  http://localhost:3000"
+            echo -e "\nPress Enter to return..."
+            read
             ;;
         3)
             echo -e "${YELLOW}Stopping services...${NC}"
@@ -93,9 +97,15 @@ while true; do
             sleep 2
             ;;
         5)
-            docker compose logs -f api
+            echo -e "${YELLOW}Rebuilding Web Panel... (در حال بیلد مجدد پنل وب)${NC}"
+            docker compose up -d --build web
+            echo -e "${GREEN}Web Panel rebuilt successfully!${NC}"
+            sleep 2
             ;;
         6)
+            docker compose logs -f api
+            ;;
+        7)
             docker compose logs -f web
             ;;
         0)
