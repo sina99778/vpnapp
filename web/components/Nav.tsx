@@ -8,6 +8,7 @@ const LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/users', label: 'Users' },
   { href: '/audit', label: 'Activity' },
+  { href: '/settings', label: 'Settings' },
 ];
 
 export default function Nav() {

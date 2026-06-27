@@ -339,3 +339,12 @@ create table audit_events (
 );
 create index audit_events_user_idx on audit_events (user_id, created_at);
 create index audit_events_event_idx on audit_events (event, created_at);
+
+-- ---------------------------------------------------------------------------
+-- System Settings (Dynamic Configuration)
+-- ---------------------------------------------------------------------------
+create table system_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);

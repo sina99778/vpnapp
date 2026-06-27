@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -21,6 +22,7 @@ import { AdminGuard } from './admin.guard';
 import { AdminService } from './admin.service';
 import { AuditService, AdminActionType } from './audit.service';
 import { AuditLogInterceptor } from './audit-log.interceptor';
+import { SettingsService, PanelConfig } from '../core/settings.service';
 
 class ListUsersQuery {
   @IsOptional() @IsString() @MaxLength(254)
@@ -80,6 +82,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly audit: AuditService,
+    private readonly settings: SettingsService,
   ) {}
 
   @Get('stats')
@@ -148,5 +151,19 @@ export class AdminController {
   @Post('panic/revoke-free-sessions')
   panic(@CurrentUser() user: AuthUser, @Req() req: Request) {
     return this.admin.panicRevokeFreeSessions({ adminId: user.userId, ip: req.ip ?? null });
+  }
+
+  // --- Settings API ---
+
+  @Get('settings/panel')
+  getPanelSettings() {
+    return this.settings.getPanelConfig();
+  }
+
+  @HttpCode(200)
+  @Put('settings/panel')
+  async setPanelSettings(@Body() dto: PanelConfig) {
+    await this.settings.setPanelConfig(dto);
+    return { success: true };
   }
 }
