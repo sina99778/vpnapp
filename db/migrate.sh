@@ -22,11 +22,17 @@ apply() {
     return 0
   fi
   echo "  apply  ${name}"
-  # -f then -c run in the same session; --single-transaction wraps both, so the
-  # file's DDL and the 'recorded' insert commit (or roll back) together.
-  psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -X -q --single-transaction \
-    -f "$f" \
-    -c "insert into schema_migrations(filename) values ('${name}');"
+  
+  # ALTER TYPE ... ADD VALUE cannot run inside a transaction block in PostgreSQL.
+  # If the file contains this statement, we run it and record the migration outside a transaction.
+  if grep -qi -E "alter type.*add value" "$f"; then
+    psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -X -q -f "$f"
+    psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -X -q -c "insert into schema_migrations(filename) values ('${name}');"
+  else
+    psql "${DATABASE_URL}" -v ON_ERROR_STOP=1 -X -q --single-transaction \
+      -f "$f" \
+      -c "insert into schema_migrations(filename) values ('${name}');"
+  fi
 }
 
 apply /db/schema.sql
