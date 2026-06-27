@@ -88,17 +88,58 @@ done
 
 # ── prerequisites ────────────────────────────────────────────────────────────
 say "Checking prerequisites"
-command -v docker >/dev/null 2>&1 || die "docker is required → https://docs.docker.com/engine/install/"
+
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+  else
+    die "You must run this script as root or have sudo installed to install missing prerequisites."
+  fi
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  say "Installing curl..."
+  $SUDO apt-get update -y && $SUDO apt-get install -y curl || die "Please install curl manually."
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  say "Installing git..."
+  $SUDO apt-get update -y && $SUDO apt-get install -y git || die "Please install git manually."
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  say "Docker is missing. Installing Docker automatically..."
+  curl -fsSL https://get.docker.com | $SUDO sh || die "Failed to install Docker."
+fi
+
 if docker compose version >/dev/null 2>&1; then
   compose() { docker compose "$@"; }
 elif command -v docker-compose >/dev/null 2>&1; then
   compose() { docker-compose "$@"; }
 else
-  die "docker compose (v2 plugin or docker-compose) is required"
+  say "Installing docker-compose plugin..."
+  $SUDO apt-get update -y && $SUDO apt-get install -y docker-compose-plugin || {
+    $SUDO curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    $SUDO chmod +x /usr/local/bin/docker-compose
+  }
+  if docker compose version >/dev/null 2>&1; then
+    compose() { docker compose "$@"; }
+  elif command -v docker-compose >/dev/null 2>&1; then
+    compose() { docker-compose "$@"; }
+  else
+    die "Failed to install docker compose."
+  fi
 fi
-command -v curl >/dev/null 2>&1 || die "curl is required"
-docker info >/dev/null 2>&1 || die "docker daemon is not running (start Docker first)"
-ok "docker + compose found"
+
+docker info >/dev/null 2>&1 || {
+  say "Starting docker service..."
+  $SUDO systemctl enable docker || true
+  $SUDO systemctl start docker || true
+  sleep 3
+  docker info >/dev/null 2>&1 || die "docker daemon is not running (start Docker first)"
+}
+ok "docker + compose + git + curl found"
 
 # ── locate / clone the repo ──────────────────────────────────────────────────
 if [ -f docker-compose.yml ] && [ -f db/migrate.sh ]; then
