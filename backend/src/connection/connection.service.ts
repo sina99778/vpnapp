@@ -46,9 +46,7 @@ interface TxResult {
   nonce: string | null;
 }
 
-// Tunables (env-overridable). Free: 1 concurrent, 5-min provisioning window.
-const FREE_MAX = Number(process.env.FREE_MAX_SESSIONS ?? 1);
-const PREMIUM_MAX = Number(process.env.PREMIUM_MAX_SESSIONS ?? 3);
+// Tunables (env-overridable). Free: 5-min provisioning window.
 const FREE_TTL_MS = Number(process.env.FREE_PROVISIONING_TTL_MS ?? 5 * 60_000);
 const PREMIUM_FALLBACK_TTL_MS = Number(process.env.PREMIUM_FALLBACK_TTL_MS ?? 30 * 24 * 60 * 60_000);
 const REQUIRED_ADS = Number(process.env.CONNECT_REQUIRED_ADS ?? 2);
@@ -73,8 +71,7 @@ export class ConnectionService {
   async connect(input: { userId: string; deviceId: string; clientPubKey: Buffer }): Promise<ConnectResult> {
     // Resolve tier AND expiry in ONE authoritative read — a lapsed subscription
     // can never yield premium (the query mirrors effective_tier exactly).
-    const { tier, expiresAt } = await this.resolveTierAndExpiry(input.userId);
-    const maxConcurrent = tier === 'premium' ? PREMIUM_MAX : FREE_MAX;
+    const { tier, expiresAt, maxConcurrent } = await this.resolveTierAndExpiry(input.userId);
 
     // ── Phase A: ONE serializable tx, NO panel calls. ──
     const tx = await withTransaction<TxResult>(async (c) => {
@@ -110,7 +107,12 @@ export class ConnectionService {
       if (!node) throw new ConnectError('no_node_capacity');
 
       const panelUsername = `s_${base62(22)}`;
-      const credentialRef = randomUUID();
+      // VLESS/VMess authenticate by UUID; Trojan/Shadowsocks by a password. A
+      // 36-char UUID exceeds the panel's 8..32 password cap, so password
+      // protocols get a 24-char token instead. config-builder uses this same
+      // value as outbound.uuid (vless) / outbound.password (trojan/ss), so it
+      // must match whatever we hand the panel below.
+      const credentialRef = isPasswordProtocol(node.protocol) ? base62(24) : randomUUID();
       const ins = await c.query(
         `insert into vpn_sessions
            (user_id, device_id, node_id, tier, status, panel_username, credential_ref,
@@ -171,7 +173,11 @@ export class ConnectionService {
       await this.panel.createUser({
         username: tx.panelUsername,
         expireAt: expiresAt,
-        proxies: { [tx.node.protocol]: { id: tx.credentialRef, flow: VLESS_FLOW } },
+        // Route the credential into the field the protocol authenticates with,
+        // so the panel stores the SAME secret the client gets from config-builder.
+        proxies: isPasswordProtocol(tx.node.protocol)
+          ? { [tx.node.protocol]: { password: tx.credentialRef } }
+          : { [tx.node.protocol]: { id: tx.credentialRef, flow: VLESS_FLOW } },
         inboundsByProtocol: { [tx.node.protocol]: [tx.node.inboundTag] }, // tier-scoped, non-empty
       });
       // Round-trip the expiry — a seconds/ms mix-up on a Marzban fork would
@@ -181,7 +187,7 @@ export class ConnectionService {
         throw new PanelError('expiry round-trip mismatch', undefined, false);
       }
     } catch (e) {
-      await this.failSession(tx.sessionId, tx.panelUsername);
+      await this.failSession(tx.sessionId, tx.panelUsername, tx.node.nodeId);
       this.log.error(`provisioning failed for session ${tx.sessionId}: ${(e as Error).message}`);
       throw new ConnectError('provision_failed');
     }
@@ -210,9 +216,9 @@ export class ConnectionService {
    * effective_tier()'s rule (active/in_grace AND period not lapsed), so a lapsed
    * subscriber resolves to FREE — never to a fallback-length premium session.
    */
-  private async resolveTierAndExpiry(userId: string): Promise<{ tier: Tier; expiresAt: Date }> {
+  private async resolveTierAndExpiry(userId: string): Promise<{ tier: Tier; expiresAt: Date; maxConcurrent: number }> {
     const { rows } = await pool.query(
-      `select s.current_period_end
+      `select s.current_period_end, p.max_concurrent_sessions
          from subscriptions s join plans p on p.id = s.plan_id
         where s.user_id = $1 and p.tier = 'premium' and s.status in ('active','in_grace')
           and (s.current_period_end is null or s.current_period_end > now())
@@ -221,13 +227,15 @@ export class ConnectionService {
       [userId],
     );
     if (rows.length === 0) {
-      return { tier: 'free', expiresAt: new Date(Date.now() + FREE_TTL_MS) };
+      const freePlan = await pool.query(`select max_concurrent_sessions from plans where tier = 'free' limit 1`);
+      const maxConcurrent = freePlan.rows.length > 0 ? freePlan.rows[0].max_concurrent_sessions : 1;
+      return { tier: 'free', expiresAt: new Date(Date.now() + FREE_TTL_MS), maxConcurrent };
     }
     const end = rows[0].current_period_end as Date | null;
     // A null period end = unlimited plan (promo/internal) → bound it to a cap
     // that is re-evaluated on every connect, so it is never truly unbounded.
     const expiresAt = end ? new Date(end) : new Date(Date.now() + PREMIUM_FALLBACK_TTL_MS);
-    return { tier: 'premium', expiresAt };
+    return { tier: 'premium', expiresAt, maxConcurrent: rows[0].max_concurrent_sessions };
   }
 
   private async pickNode(c: PoolClient, tier: Tier): Promise<NodePick | null> {
@@ -239,11 +247,12 @@ export class ConnectionService {
          join node_inbounds ni on ni.node_id = n.id
         where n.status = 'active'
           and n.is_active                       -- admin not draining this node
+          and n.error_streak < 3                -- exclude temporarily dead nodes
           and n.tier = any($1::plan_tier[])
           and ni.tier = any($1::plan_tier[])
           and exists (select 1 from node_endpoints ne
                        where ne.node_id = n.id and ne.inbound_tag = ni.inbound_tag and ne.is_active)
-        order by n.current_load asc, n.sort_weight asc
+        order by n.current_load asc, n.error_streak asc, n.sort_weight asc
         limit 1`,
       [allowed],
     );
@@ -272,23 +281,30 @@ export class ConnectionService {
     return this.cipher.encryptFor(configJson, tx.sessionId, clientPubKey);
   }
 
-  private async failSession(sessionId: string, panelUsername: string): Promise<void> {
-    await pool
-      .query(
+  private async failSession(sessionId: string, panelUsername: string, nodeId: string): Promise<void> {
+    try {
+      await pool.query(
         `update vpn_sessions set status='failed', closed_at=now(), close_reason='panel_provision_failed'
            where id = $1`,
         [sessionId],
-      )
-      .catch(() => undefined);
-    // Reclaim any partially-created user via the outbox.
-    await pool
-      .query(
+      );
+      // Reclaim any partially-created user via the outbox.
+      await pool.query(
         `insert into panel_operations (session_id, op, payload, status, next_attempt_at)
          values ($1, 'delete_user', $2, 'pending', now())`,
         [sessionId, { panel_username: panelUsername }],
-      )
-      .catch(() => undefined);
+      );
+      // Penalize the dead node so it doesn't attract all traffic (black hole bug).
+      await pool.query(`update nodes set error_streak = error_streak + 1 where id = $1`, [nodeId]);
+    } catch (e) {
+      this.log.error(`failSession cleanup failed for session ${sessionId}: ${(e as Error).message}`);
+    }
   }
+}
+
+/** Protocols whose credential is a password (not a UUID): Trojan, Shadowsocks. */
+function isPasswordProtocol(protocol: string): boolean {
+  return protocol === 'trojan' || protocol === 'shadowsocks' || protocol === 'ss';
 }
 
 function base62(len: number): string {

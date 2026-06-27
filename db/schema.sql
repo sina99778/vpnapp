@@ -75,8 +75,8 @@ create unique index devices_app_attest_key_uq
 create or replace function enforce_attest_counter_monotonic()
 returns trigger language plpgsql as $$
 begin
-  if new.app_attest_counter < old.app_attest_counter then
-    raise exception 'app_attest_counter must not decrease (% -> %)',
+  if new.app_attest_counter <= old.app_attest_counter and old.app_attest_counter > 0 then
+    raise exception 'app_attest_counter must be strictly increasing (% -> %)',
       old.app_attest_counter, new.app_attest_counter;
   end if;
   return new;
@@ -219,12 +219,14 @@ $$;
 -- ---------------------------------------------------------------------------
 create table nodes (
   id             uuid primary key default gen_random_uuid(),
-  panel_node_id  integer unique,               -- Rebecca node id; null = master node
+  panel_node_id  text unique,                  -- Rebecca integer / Remnawave UUID
   name           text not null,
   country_code   char(2) not null,
   city           text,
   tier           plan_tier not null default 'premium',
   status         node_status not null default 'active',
+  is_active      boolean not null default true,
+  error_streak   integer not null default 0,
   capacity       integer not null default 1000,
   current_load   real not null default 0,      -- 0..1, from sync worker
   sort_weight    integer not null default 100,

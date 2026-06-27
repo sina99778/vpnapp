@@ -117,9 +117,24 @@ fi
 # ── gather config ────────────────────────────────────────────────────────────
 say "Configuration (Enter accepts the default)"
 ask PUBLIC_API_URL  "Public URL of this server (what the admin's browser will call)" "http://localhost:3000"
-ask PANEL_BASE_URL  "Rebecca panel base URL (private network)" "https://panel.internal:8000"
-ask PANEL_ADMIN_USER "Rebecca panel admin username" "change-me"
-ask PANEL_ADMIN_PASS "Rebecca panel admin password" "change-me" silent
+ask PANEL_PROVIDER  "Panel Provider (rebecca | remnawave)" "rebecca"
+
+if [ "$PANEL_PROVIDER" = "rebecca" ]; then
+  ask PANEL_BASE_URL  "Rebecca panel base URL (private network)" "https://panel.internal:8000"
+  ask PANEL_ADMIN_USER "Rebecca panel admin username" "change-me"
+  ask PANEL_ADMIN_PASS "Rebecca panel admin password" "change-me" silent
+  REMNAWAVE_BASE_URL="${REMNAWAVE_BASE_URL:-}"
+  REMNAWAVE_TOKEN="${REMNAWAVE_TOKEN:-}"
+  REMNAWAVE_SQUAD_UUIDS="${REMNAWAVE_SQUAD_UUIDS:-}"
+  REMNAWAVE_CADDY_TOKEN="${REMNAWAVE_CADDY_TOKEN:-}"
+else
+  ask REMNAWAVE_BASE_URL  "Remnawave panel base URL" "https://panel.example.com"
+  ask REMNAWAVE_TOKEN "Remnawave API token (Bearer)" "" silent
+  ask REMNAWAVE_SQUAD_UUIDS "Remnawave squad UUIDs (comma-separated)" ""
+  PANEL_BASE_URL="${PANEL_BASE_URL:-}"
+  PANEL_ADMIN_USER="${PANEL_ADMIN_USER:-}"
+  PANEL_ADMIN_PASS="${PANEL_ADMIN_PASS:-}"
+fi
 PUBLIC_API_URL="${PUBLIC_API_URL%/}"
 
 # ── root .env (compose interpolation) ────────────────────────────────────────
@@ -172,11 +187,22 @@ ADMIN_GRANT_DAYS=30
 # TELEGRAM_BOT_TOKEN=            # set to enable the Telegram ops bot
 ADMIN_TELEGRAM_IDS=              # comma-separated numeric Telegram IDs
 
-# ── Rebecca panel (private network only) ──
+# ── Panel selection ──
+# "rebecca" (Marzban-family) or "remnawave" (https://docs.rw).
+PANEL_PROVIDER=${PANEL_PROVIDER}
+PANEL_TIMEOUT_MS=8000
+
+# ── Rebecca panel (used when PANEL_PROVIDER=rebecca; private network only) ──
 PANEL_BASE_URL=${PANEL_BASE_URL}
 PANEL_ADMIN_USER=${PANEL_ADMIN_USER}
 PANEL_ADMIN_PASS=${PANEL_ADMIN_PASS}
-PANEL_TIMEOUT_MS=8000
+
+# ── Remnawave panel (used when PANEL_PROVIDER=remnawave) ──
+REMNAWAVE_BASE_URL=${REMNAWAVE_BASE_URL}
+REMNAWAVE_TOKEN=${REMNAWAVE_TOKEN}
+REMNAWAVE_CADDY_TOKEN=${REMNAWAVE_CADDY_TOKEN:-}
+# Comma-separated internal-squad UUID(s); REQUIRED for remnawave (fail-closed).
+REMNAWAVE_SQUAD_UUIDS=${REMNAWAVE_SQUAD_UUIDS}
 
 # ── Connection / tiers ──
 FREE_MAX_SESSIONS=1

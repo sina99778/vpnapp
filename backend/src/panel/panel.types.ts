@@ -34,7 +34,8 @@ export interface PanelUser {
 }
 
 export interface PanelNode {
-  panelNodeId: number;
+  /** Panel-side node id as text — Rebecca integer (stringified) or Remnawave UUID. */
+  panelNodeId: string;
   name: string;
   status: string;
   address?: string;

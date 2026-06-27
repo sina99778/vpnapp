@@ -267,7 +267,7 @@ export class AdminService {
         group by n.id
         order by n.sort_weight asc, n.name asc`,
     );
-    const byId = new Map<number, { status: string }>();
+    const byId = new Map<string, { status: string }>();
     let panelReachable = true;
     try {
       // Network call — NOT inside any transaction.

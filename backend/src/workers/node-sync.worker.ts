@@ -39,7 +39,10 @@ export class NodeSyncWorker implements OnModuleDestroy {
         // NOTE: `is_active` is deliberately absent from the SET clause.
         const r = await pool.query(
           `update nodes
-              set status = $2::node_status, last_synced_at = now(), updated_at = now()
+              set status = $2::node_status, 
+                  last_synced_at = now(), 
+                  updated_at = now(),
+                  error_streak = case when $2::node_status = 'active' then 0 else error_streak end
             where panel_node_id = $1`,
           [n.panelNodeId, status],
         );

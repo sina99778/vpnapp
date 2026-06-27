@@ -235,7 +235,7 @@ export class RebeccaPanelClient implements IPanelClient {
       Array<{ id: number; name: string; status: string; address?: string }>
     >('GET', '/api/nodes');
     return (nodes ?? []).map((n) => ({
-      panelNodeId: n.id,
+      panelNodeId: String(n.id), // PanelNode.panelNodeId is text (UUID-capable)
       name: n.name,
       status: n.status,
       address: n.address,
