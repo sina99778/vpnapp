@@ -118,6 +118,9 @@ function createClient(): AxiosInstance {
 
 const http = createClient();
 
+/** Raw Axios client for pages that need direct endpoint calls. */
+export const apiClient = http;
+
 /** Typed admin API surface. */
 export const adminApi = {
   stats: () => http.get<AdminStats>('/admin/stats').then((r) => r.data),

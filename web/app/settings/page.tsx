@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Nav from '../../components/Nav';
-import { api } from '../../lib/api';
+import { apiClient } from '../../lib/api';
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<any>(null);
@@ -10,7 +10,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.get('/admin/settings/panel')
+    apiClient.get('/admin/settings/panel')
       .then(res => {
         setConfig(res.data);
         setLoading(false);
@@ -25,7 +25,7 @@ export default function SettingsPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.put('/admin/settings/panel', config);
+      await apiClient.put('/admin/settings/panel', config);
       alert('تنظیمات با موفقیت ذخیره شد');
     } catch (err) {
       alert('خطا در ذخیره تنظیمات');
