@@ -13,8 +13,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json nest-cli.json ./
 COPY src ./src
-ENV NODE_OPTIONS="--max-old-space-size=1024"
-RUN npm run build            # → /app/dist
+RUN npm install --save-dev @swc/cli @swc/core && npx nest build --builder swc
 
 # ---- proddeps: production-only node_modules (native modules built for THIS base)
 FROM node:20-bookworm-slim AS proddeps
