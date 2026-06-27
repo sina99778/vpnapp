@@ -20,6 +20,7 @@ show_menu() {
     echo "5) 🌐 Rebuild Web Panel (بیلد مجدد پنل وب)"
     echo "6) 📜 View API Logs (مشاهده لاگ‌های بک‌اند)"
     echo "7) 📜 View Web Dashboard Logs (مشاهده لاگ‌های داشبورد)"
+    echo "8) 🔑 Create Admin User (ساخت یا ریست ادمین پنل وب)"
     echo "0) ❌ Exit (خروج)"
     echo -e "${BLUE}=======================================${NC}"
     echo -n "Choose an option: "
@@ -107,6 +108,13 @@ while true; do
             ;;
         7)
             docker compose logs -f web
+            ;;
+        8)
+            echo -e "${YELLOW}🔑 Creating or Resetting Admin User (ساخت ادمین)...${NC}"
+            # Ensure script has execute permissions implicitly by running with bash
+            bash scripts/create-admin.sh
+            echo -e "\nPress Enter to return..."
+            read
             ;;
         0)
             echo -e "${GREEN}Goodbye!${NC}"
