@@ -21,8 +21,8 @@
 # =============================================================================
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/sina99778/securevpn.git}"
-INSTALL_DIR="${INSTALL_DIR:-securevpn}"
+REPO_URL="${REPO_URL:-https://github.com/sina99778/vpnapp.git}"
+INSTALL_DIR="${INSTALL_DIR:-vpnapp}"
 
 # ── pretty output ────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
