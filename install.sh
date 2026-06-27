@@ -307,7 +307,8 @@ if [ "${NO_START:-0}" = "1" ]; then
 fi
 
 say "Building images + starting the stack (first run takes a few minutes)"
-compose up -d --build
+compose build --no-cache
+compose up -d
 
 say "Waiting for the API to become healthy"
 tries=0
