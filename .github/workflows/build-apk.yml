@@ -1,0 +1,42 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'Your server API URL (e.g. http://YOUR_IP:3000/api/v1)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install dependencies
+        working-directory: ./flutter_app
+        run: flutter pub get
+
+      - name: Build APK
+        working-directory: ./flutter_app
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ github.event.inputs.api_url }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: securevpn-android-apk
+          path: flutter_app/build/app/outputs/flutter-apk/app-release.apk
